@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.5
+.VERSION 1.7
 .GUID 7a98d29c-7f67-46b0-b579-655a1b421636
 .AUTHOR Eric Duncan
 .COMPANYNAME kalyeri
@@ -37,6 +37,11 @@ ActiveDirectory
 	Added email output option
 	Added UPN to search filter
 	Sets computers local domain if option is not specified.
+20240507 - v1.6
+	Added requires for AD module.
+	Added Import-Module to help load correctly.
+20240513 - v1.7
+	Added interactive mode if script is ran and not imported.
 .TODO
 Enable pipeline
 #>
@@ -46,7 +51,7 @@ Enable pipeline
 Active Directory Provisioning Tool that will suggest account username, email, and/or password.
 
 .DESCRIPTION
-Active Directory Provisioning Tool what will check SamAccountName, UPN, and proxyAddresses for an existing account and suggest the next avilable name.
+Active Directory Provisioning Tool that will check SamAccountName, UPN, and proxyAddresses for an existing account and suggest the next avilable name.
 Username, Email/UPN format:
 [First Initial][Last Name] - example: EDuncan
 [First Initial][Middle Initial (if specified)][Last Name} - example: EBDuncan
@@ -81,6 +86,9 @@ String text list or hasttable with -ht switch
 
 .EXAMPLE
 Import-Module .\Suggest-Account.ps1 -force
+-or-
+.\Suggest-Account.ps1
+
 Suggest-Account -sn smith -gn j -password -email -ht
 #>
 function Suggest-Account{
@@ -167,23 +175,39 @@ if ($ht) {
 	"$account"
 	if ($email) {"$account@$domain"}
 	if ($password) {suggest-password}
+	if ($pause) {pause; Suggest-Account -email -password}
 	} #End ht Else
 
 #Cleanup	
-remove-Variable SuggestAD,password,gn,sn,mi,ht,account
-	
+remove-Variable SuggestAD,password,gn,sn,mi,ht,account,pause
+Export-ModuleMember -Function Suggest-Account
 } #End Suggest-Account
 
-#Main
-$ErrorActionPreference="stop"
-
+## Main ##
+#requires -modules ActiveDirectory
 if (!(Get-Module "activedirectory" | select name)) {Import-Module ActiveDirectory}
 
-
-#End
-write-host @"
+#Script Vars
+$ErrorActionPreference="stop"
+[string]$Script:ScriptFile=$MyInvocation.MyCommand.name
+[string]$Script:ScriptName=($ScriptFile).replace(".ps1",'')
+[string]$Script:ScriptPath=($MyInvocation.MyCommand.Source).replace("\$ScriptFile",'')
+[string]$Script:ModFYI=
+@"
 
 Use as a PS module: import-Module .\Suggest-Account.ps1"
 For more information, type: help suggest-account
 
 "@
+
+#Load as module
+if ((Get-Module | Where-Object {$_.name -eq $ScriptName}) -or ($MyInvocation.CommandOrigin -eq "Internal")) {"$ScriptName loaded..."; $ModFYI} else {
+#Interactive run
+import-module "$ScriptPath\$ScriptFile" -force
+$pause=$true
+write-host "Running in interactive mode..."
+Suggest-Account -email -password
+pause
+}
+
+## End ##
